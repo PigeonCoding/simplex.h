@@ -1,10 +1,5 @@
 #include <assert.h>
 #include <math.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
 
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
