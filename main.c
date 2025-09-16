@@ -141,12 +141,16 @@ char char_to_num(char c) {
   do {                                                                         \
     (l)->cursor++;                                                             \
     (l)->i_col++;                                                              \
+    IS_NL(l);                                                                  \
+  } while (0)
+#define IS_NL(l)                                                               \
+  do {                                                                         \
     if (CC(l) == '\n') {                                                       \
       (l)->i_col = 0;                                                          \
       (l)->i_row++;                                                            \
+      (l)->cursor++;                                                           \
     }                                                                          \
   } while (0)
-
 // returns true if a token is found
 bool get_token(lexer_t *l) {
 
@@ -162,6 +166,8 @@ bool get_token(lexer_t *l) {
 
   if (l->cursor >= l->content_size)
     return false;
+
+  // IS_NL(l);
 
   if (is_alphanumerical(CC(l))) {
     l->token.col = l->i_col;
@@ -299,7 +305,6 @@ bool check_puncts(lexer_t *l, int count, ...) {
   }                                                                            \
   if (tmp_bool)
 
-
 int main() {
   lexer_t l = {0};
   l_init("./test.te", &l);
@@ -326,7 +331,8 @@ int main() {
     case CLEX_punct:
       check_puncts_n_skip(&l, 2, '+', '+') {
         printf(loc " spec punct: ++\n", loc_ptr(&l));
-      } else {
+      }
+      else {
         printf(loc " punct: '%c'\n", loc_ptr(&l), l.token.charlit);
       }
       break;
