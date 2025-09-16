@@ -137,20 +137,17 @@ char char_to_num(char c) {
     }                                                                          \
   } while (0)
 
-#define INC_CURSOR(l)                                                          \
+#define INC_CURSOR(l, nl)                                                      \
   do {                                                                         \
     (l)->cursor++;                                                             \
     (l)->i_col++;                                                              \
-    IS_NL(l);                                                                  \
-  } while (0)
-#define IS_NL(l)                                                               \
-  do {                                                                         \
-    if (CC(l) == '\n') {                                                       \
+    if (CC(l) == '\n' && nl) {                                                 \
       (l)->i_col = 0;                                                          \
       (l)->i_row++;                                                            \
       (l)->cursor++;                                                           \
     }                                                                          \
   } while (0)
+
 // returns true if a token is found
 bool get_token(lexer_t *l) {
 
@@ -161,7 +158,7 @@ bool get_token(lexer_t *l) {
   l->token.intlit = 0;
 
   while (CC(l) == ' ' || CC(l) == '\t') {
-    INC_CURSOR(l);
+    INC_CURSOR(l, true);
   }
 
   if (l->cursor >= l->content_size)
@@ -175,32 +172,32 @@ bool get_token(lexer_t *l) {
 
     while (is_alphanumerical(CC(l))) {
       da_append(&l->token.str, CC(l));
-      INC_CURSOR(l);
+      INC_CURSOR(l, false);
     }
 
     da_append(&l->token.str, '\0');
-    INC_CURSOR(l);
+    INC_CURSOR(l, true);
     l->token.type = CLEX_id;
   } else if (CC(l) == '"') {
     l->token.col = l->i_col;
     l->token.row = l->i_row;
 
-    INC_CURSOR(l);
+    INC_CURSOR(l, false);
 
     while (CC(l) != '"') {
       if (CC(l) == '\\') {
         // TODO: do things here
         da_append(&l->token.str, CC(l));
-        INC_CURSOR(l);
+        INC_CURSOR(l, false);
         da_append(&l->token.str, CC(l));
       } else {
         da_append(&l->token.str, CC(l));
       }
-      INC_CURSOR(l);
+      INC_CURSOR(l, false);
     }
-    INC_CURSOR(l);
     da_append(&l->token.str, '\0');
     l->token.type = CLEX_dqstring;
+    INC_CURSOR(l, true);
 
   } else if (is_numerical(CC(l))) {
     l->token.col = l->i_col;
@@ -210,7 +207,7 @@ bool get_token(lexer_t *l) {
     while (is_numerical(CC(l))) {
       l->token.intlit *= 10;
       l->token.intlit += char_to_num(CC(l));
-      INC_CURSOR(l);
+      INC_CURSOR(l, false);
     }
     if (CC(l) == '.') {
       // TODO: optimize it maybe
@@ -218,12 +215,12 @@ bool get_token(lexer_t *l) {
       l->token.floatlit = l->token.intlit;
       l->token.intlit = 0;
 
-      INC_CURSOR(l);
+      INC_CURSOR(l, false);
 
       while (is_numerical(CC(l))) {
         l->token.intlit *= 10;
         l->token.intlit += char_to_num(CC(l));
-        INC_CURSOR(l);
+        INC_CURSOR(l, false);
       }
 
       float f = l->token.intlit;
@@ -238,22 +235,22 @@ bool get_token(lexer_t *l) {
     l->token.col = l->i_col;
     l->token.row = l->i_row;
 
-    INC_CURSOR(l);
+    INC_CURSOR(l, false);
     l->token.charlit = CC(l);
     l->token.type = CLEX_charlit;
-    INC_CURSOR(l);
+    INC_CURSOR(l, false);
 
     prt_assert(CC(l) == '\'',
                loc " single quote strings are not supported, "
                    "either use double quote or fix your char\n",
                loc_ptr(l));
-    INC_CURSOR(l);
+    INC_CURSOR(l, true);
   } else {
     l->token.col = l->i_col;
     l->token.row = l->i_row;
     l->token.charlit = CC(l);
     l->token.type = CLEX_punct;
-    INC_CURSOR(l);
+    INC_CURSOR(l, true);
   }
 
   return true;
