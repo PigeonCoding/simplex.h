@@ -1,6 +1,8 @@
-#include <assert.h>
-#include <math.h>
+#include <stdlib.h>
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
 #include "nob.h"
@@ -9,127 +11,56 @@
 
 static bool tmp_bool = false;
 
-enum CLEX {
-  oof,
-  CLEX_eof,
-  CLEX_unknown,
-  CLEX_parse_error,
-  CLEX_intlit,
-  CLEX_floatlit,
-  CLEX_id,
-  CLEX_dqstring,
-  CLEX_punct,
-  CLEX_charlit,
-  CLEX_eq,
-  CLEX_noteq,
-  CLEX_lesseq,
-  CLEX_greatereq,
-  CLEX_andand,
-  CLEX_oror,
-  CLEX_shl,
-  CLEX_shr,
-  CLEX_plusplus,
-  CLEX_minusminus,
-  CLEX_pluseq,
-  CLEX_minuseq,
-  CLEX_muleq,
-  CLEX_diveq,
-  CLEX_modeq,
-  CLEX_andeq,
-  CLEX_oreq,
-  CLEX_xoreq,
-  CLEX_arrow,
-  CLEX_eqarrow,
-  CLEX_shleq,
-  CLEX_shreq,
+enum SPX {
+  SPX_eof,
+  // SPX_parse_error,
+  SPX_intlit,
+  SPX_floatlit,
+  SPX_id,
+  SPX_dqstring,
+  SPX_punct,
+  SPX_charlit,
 };
 
 typedef struct {
-  enum CLEX type;
+  enum SPX type;
   char charlit;
   long intlit;
   double floatlit;
-  // this should be null terminated
+  // this is null terminated
   Nob_String_Builder str;
 
-  size_t col;
-  size_t row;
+  uint16_t col;
+  uint16_t row;
 } token_t;
 
 typedef struct {
   const char *file;
-  char *content;
-  size_t content_size;
-  size_t i_col;
-  size_t i_row;
+  Nob_String_Builder content;
 
-  size_t cursor;
+  uint32_t cursor;
+  uint16_t _col;
+  uint16_t _row;
 
   token_t token;
 
 } lexer_t;
 
-int l_init(const char *file, lexer_t *l) {
-  Nob_String_Builder sb = {0};
-  if (!read_entire_file(file, &sb))
-    return 1;
-  l->file = file;
-  l->content = sb.items;
-  l->content_size = sb.count;
-
-  da_append(&sb, '\0');
-  return 0;
-}
-
-char char_to_num(char c) {
-  switch (c) {
-  case '1':
-    return 1;
-    break;
-  case '2':
-    return 2;
-    break;
-  case '3':
-    return 3;
-    break;
-  case '4':
-    return 4;
-    break;
-  case '5':
-    return 5;
-    break;
-  case '6':
-    return 6;
-    break;
-  case '7':
-    return 7;
-    break;
-  case '8':
-    return 8;
-    break;
-  case '9':
-    return 9;
-    break;
-  case '0':
-    return 0;
-    break;
-  default:
-    printf("wtf is %c\n", c);
-  }
-
-  UNREACHABLE("char char_to_num()");
-}
+int l_init(const char *file, lexer_t *l);
+bool get_token(lexer_t *l);
+bool check_puncts(lexer_t *l, int count, ...);
+void l_reset(lexer_t *l);
+void l_free(lexer_t *l);
 
 #define is_alphanumerical(c)                                                   \
   ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_')
 #define is_numerical(c) (c >= '0' && c <= '9')
 
-// current char
-#define CC(l) (l)->content[(l)->cursor]
+#define _CC(l) (l)->content.items[(l)->cursor]
 
-#define loc "%s:%ld:%ld"
-#define loc_ptr(l) (l)->file, (l)->token.row, (l)->token.col
-#define prt_assert(cond, msg, ...)                                             \
+#define LOC "%s:%d:%d"
+#define LOC_PRT(l) (l)->file, (l)->token.row, (l)->token.col
+#define _PRT_ASSERT(cond, msg, ...)                                            \
   do {                                                                         \
     if (!(cond)) {                                                             \
       fprintf(stderr, msg, __VA_ARGS__);                                       \
@@ -137,16 +68,52 @@ char char_to_num(char c) {
     }                                                                          \
   } while (0)
 
-#define INC_CURSOR(l, nl)                                                      \
+#define _INC_CURSOR(l, nl)                                                     \
   do {                                                                         \
-    (l)->cursor++;                                                             \
-    (l)->i_col++;                                                              \
-    if (CC(l) == '\n' && nl) {                                                 \
-      (l)->i_col = 0;                                                          \
-      (l)->i_row++;                                                            \
+    if (_CC(l) == '\n' && nl) {                                                \
+      (l)->_col = 0;                                                           \
+      (l)->_row++;                                                             \
       (l)->cursor++;                                                           \
+    } else {                                                                   \
+      (l)->cursor++;                                                           \
+      (l)->_col++;                                                             \
     }                                                                          \
   } while (0)
+
+// TODO: find a way to do it without tmp_bool
+#define check_puncts_n_skip(l, count, ...)                                     \
+  do {                                                                         \
+    tmp_bool = check_puncts(l, count, __VA_ARGS__);                            \
+    if (tmp_bool) {                                                            \
+      for (int i = 1; i < count; i++) {                                        \
+        get_token(l);                                                          \
+      }                                                                        \
+    }                                                                          \
+  } while (0);                                                                 \
+  if (tmp_bool)
+
+#define get_token_and_expect(l, type)                                          \
+  get_token((l)) && (l)->token.type == (type)
+#define get_token_and_expect_punct(l, punct)                                   \
+  get_token_and_expect(l, SPX_punct) && (l)->token.charlit == (punct)
+
+// this function converts chars '0'-'9' to numbers 0-9
+#define _char_to_nm(c)                                                         \
+  (((c) == '1') * 1 + ((c) == '2') * 2 + ((c) == '3') * 3 + ((c) == '4') * 4 + \
+   ((c) == '5') * 5 + ((c) == '6') * 6 + ((c) == '7') * 7 + ((c) == '8') * 8 + \
+   ((c) == '9') * 9)
+
+int l_init(const char *file, lexer_t *l) {
+  l->content = (Nob_String_Builder){.capacity = 0, .count = 0, .items = NULL};
+  if (!read_entire_file(file, &l->content)) {
+    fprintf(stderr, "could not read file %s\n", file);
+    return 1;
+  }
+  l->file = file;
+
+  da_append(&l->content, '\0');
+  return 0;
+}
 
 // returns true if a token is found
 bool get_token(lexer_t *l) {
@@ -156,101 +123,139 @@ bool get_token(lexer_t *l) {
   l->token.charlit = 0;
   l->token.floatlit = 0;
   l->token.intlit = 0;
+  l->token.col = 0;
+  l->token.row = 0;
 
-  while (CC(l) == ' ' || CC(l) == '\t') {
-    INC_CURSOR(l, true);
+  while (_CC(l) == ' ' || _CC(l) == '\t' || _CC(l) == '\r' || _CC(l) == '\n') {
+    _INC_CURSOR(l, true);
   }
 
-  if (l->cursor >= l->content_size)
+  if (l->cursor >= l->content.count) {
+    l->token.type = SPX_eof;
     return false;
+  }
 
-  // IS_NL(l);
+  if (is_alphanumerical(_CC(l))) {
+    l->token.col = l->_col + 1;
+    l->token.row = l->_row + 1;
 
-  if (is_alphanumerical(CC(l))) {
-    l->token.col = l->i_col;
-    l->token.row = l->i_row;
-
-    while (is_alphanumerical(CC(l))) {
-      da_append(&l->token.str, CC(l));
-      INC_CURSOR(l, false);
+    while (is_alphanumerical(_CC(l))) {
+      da_append(&l->token.str, _CC(l));
+      _INC_CURSOR(l, false);
     }
 
     da_append(&l->token.str, '\0');
-    INC_CURSOR(l, true);
-    l->token.type = CLEX_id;
-  } else if (CC(l) == '"') {
-    l->token.col = l->i_col;
-    l->token.row = l->i_row;
+    _INC_CURSOR(l, true);
+    l->token.type = SPX_id;
+  } else if (_CC(l) == '"') {
+    l->token.col = l->_col + 1;
+    l->token.row = l->_row + 1;
 
-    INC_CURSOR(l, false);
+    _INC_CURSOR(l, false);
 
-    while (CC(l) != '"') {
-      if (CC(l) == '\\') {
+    while (_CC(l) != '"') {
+      if (_CC(l) == '\\') {
         // TODO: do things here
-        da_append(&l->token.str, CC(l));
-        INC_CURSOR(l, false);
-        da_append(&l->token.str, CC(l));
+        uint16_t row = l->_row + 1;
+        uint16_t col = l->_col + 1;
+        _INC_CURSOR(l, false);
+        switch (_CC(l)) {
+        case 'b':
+          da_append(&l->token.str, '\b');
+          break;
+        case 'f':
+          da_append(&l->token.str, '\f');
+          break;
+        case 'n':
+          da_append(&l->token.str, '\n');
+          break;
+        case 'r':
+          da_append(&l->token.str, '\r');
+          break;
+        case 't':
+          da_append(&l->token.str, '\t');
+          break;
+        case 'v':
+          da_append(&l->token.str, '\v');
+          break;
+        case '\\':
+          da_append(&l->token.str, '\\');
+          break;
+        case '\'':
+          break;
+        case '"':
+          da_append(&l->token.str, '"');
+          break;
+        case '0':
+          da_append(&l->token.str, '\0');
+          break;
+
+        default:
+          printf(LOC " unknown escape code here\n", l->file, row, col);
+        }
+        // da_append(&l->token.str, _CC(l));
       } else {
-        da_append(&l->token.str, CC(l));
+        da_append(&l->token.str, _CC(l));
       }
-      INC_CURSOR(l, false);
+      _INC_CURSOR(l, false);
     }
     da_append(&l->token.str, '\0');
-    l->token.type = CLEX_dqstring;
-    INC_CURSOR(l, true);
+    l->token.type = SPX_dqstring;
+    _INC_CURSOR(l, true);
 
-  } else if (is_numerical(CC(l))) {
-    l->token.col = l->i_col;
-    l->token.row = l->i_row;
+  } else if (is_numerical(_CC(l))) {
+    // TODO: support 0x 0b 0o notation
+    l->token.col = l->_col + 1;
+    l->token.row = l->_row + 1;
 
-    l->token.type = CLEX_intlit;
-    while (is_numerical(CC(l))) {
+    l->token.type = SPX_intlit;
+    while (is_numerical(_CC(l))) {
       l->token.intlit *= 10;
-      l->token.intlit += char_to_num(CC(l));
-      INC_CURSOR(l, false);
+      l->token.intlit += _char_to_nm(_CC(l));
+      _INC_CURSOR(l, false);
     }
-    if (CC(l) == '.') {
+    if (_CC(l) == '.') {
       // TODO: optimize it maybe
-      l->token.type = CLEX_floatlit;
+      l->token.type = SPX_floatlit;
       l->token.floatlit = l->token.intlit;
-      l->token.intlit = 0;
+      l->token.intlit = 1;
 
-      INC_CURSOR(l, false);
+      _INC_CURSOR(l, false);
 
-      while (is_numerical(CC(l))) {
+      while (is_numerical(_CC(l))) {
         l->token.intlit *= 10;
-        l->token.intlit += char_to_num(CC(l));
-        INC_CURSOR(l, false);
+        l->token.intlit += _char_to_nm(_CC(l));
+        _INC_CURSOR(l, false);
       }
 
       float f = l->token.intlit;
-      while (abs((int)floor(f)) > 1)
+      while (abs((int)(f)) > 1)
         f /= 10;
 
-      l->token.floatlit += f;
+      l->token.floatlit += f - 1;
       l->token.intlit = 0;
     }
 
-  } else if (CC(l) == '\'') {
-    l->token.col = l->i_col;
-    l->token.row = l->i_row;
+  } else if (_CC(l) == '\'') {
+    l->token.col = l->_col + 1;
+    l->token.row = l->_row + 1;
 
-    INC_CURSOR(l, false);
-    l->token.charlit = CC(l);
-    l->token.type = CLEX_charlit;
-    INC_CURSOR(l, false);
+    _INC_CURSOR(l, false);
+    l->token.charlit = _CC(l);
+    l->token.type = SPX_charlit;
+    _INC_CURSOR(l, false);
 
-    prt_assert(CC(l) == '\'',
-               loc " single quote strings are not supported, "
-                   "either use double quote or fix your char\n",
-               loc_ptr(l));
-    INC_CURSOR(l, true);
+    _PRT_ASSERT(_CC(l) == '\'',
+                LOC " single quote strings are not supported, "
+                    "either use double quote or fix your char\n",
+                LOC_PRT(l));
+    _INC_CURSOR(l, true);
   } else {
-    l->token.col = l->i_col;
-    l->token.row = l->i_row;
-    l->token.charlit = CC(l);
-    l->token.type = CLEX_punct;
-    INC_CURSOR(l, true);
+    l->token.col = l->_col + 1;
+    l->token.row = l->_row + 1;
+    l->token.charlit = _CC(l);
+    l->token.type = SPX_punct;
+    _INC_CURSOR(l, true);
   }
 
   return true;
@@ -260,22 +265,22 @@ bool get_token(lexer_t *l) {
 bool check_puncts(lexer_t *l, int count, ...) {
 
   token_t token = l->token;
-  size_t i_row = l->i_row;
-  size_t i_col = l->i_col;
+  size_t _row = l->_row;
+  size_t _col = l->_col;
   size_t cursor = l->cursor;
 
   va_list args;
   va_start(args, count);
 
-  for (int i = 0; i < count; i++) {
+  for (int i = 0; i < count - 1; i++) {
     if (l->token.charlit == va_arg(args, int)) {
       get_token(l);
       continue;
     } else {
 
       l->token = token;
-      l->i_row = i_row;
-      l->i_col = i_col;
+      l->_row = _row;
+      l->_col = _col;
       l->cursor = cursor;
 
       va_end(args);
@@ -284,83 +289,81 @@ bool check_puncts(lexer_t *l, int count, ...) {
   }
 
   l->token = token;
-  l->i_row = i_row;
-  l->i_col = i_col;
+  l->_row = _row;
+  l->_col = _col;
   l->cursor = cursor;
 
   va_end(args);
   return true;
 }
 
-// TODO: find a way to do it without tmp_bool
-#define check_puncts_n_skip(l, count, ...)                                     \
-  tmp_bool = check_puncts(l, count, __VA_ARGS__);                              \
-  if (tmp_bool) {                                                              \
-    for (int i = 1; i < count; i++) {                                          \
-      get_token(l);                                                            \
-    }                                                                          \
-  }                                                                            \
-  if (tmp_bool)
+void l_reset(lexer_t *l) {
+  l->content.count = 0;
+  l->cursor = 0;
+  if (l->file)
+    free((void *)l->file);
+  l->file = NULL;
+  l->_col = 0;
+  l->_row = 0;
+
+  l->token.type = 0;
+  l->token.str.count = 0;
+  l->token.charlit = 0;
+  l->token.floatlit = 0;
+  l->token.intlit = 0;
+  l->token.col = 0;
+  l->token.row = 0;
+}
+
+void l_free(lexer_t *l) {
+  l_reset(l);
+
+  da_free(l->content);
+  l->content.items = NULL;
+  l->content.capacity = 0;
+  l->content.count = 0;
+
+  da_free(l->token.str);
+  l->token.str.items = NULL;
+  l->token.str.capacity = 0;
+  l->token.str.count = 0;
+}
 
 int main() {
+
   lexer_t l = {0};
   l_init("./test.te", &l);
 
-  printf("%s\n", l.content);
+  printf("%s\n", l.content.items);
 
   while (get_token(&l)) {
     switch (l.token.type) {
-    case CLEX_id:
-      printf(loc " id: '%s'\n", loc_ptr(&l), l.token.str.items);
+    case SPX_id:
+      printf(LOC " id: '%s'\n", LOC_PRT(&l), l.token.str.items);
       break;
-    case CLEX_dqstring:
-      printf(loc " dqstring: \"%s\"\n", loc_ptr(&l), l.token.str.items);
+    case SPX_dqstring:
+      printf(LOC " dqstring: \"%s\"\n", LOC_PRT(&l), l.token.str.items);
       break;
-    case CLEX_charlit:
-      printf(loc " charlit: '%c'\n", loc_ptr(&l), l.token.charlit);
+    case SPX_charlit:
+      printf(LOC " charlit: '%c'\n", LOC_PRT(&l), l.token.charlit);
       break;
-    case CLEX_intlit:
-      printf(loc " intlit: %ld\n", loc_ptr(&l), l.token.intlit);
+    case SPX_intlit:
+      printf(LOC " intlit: %ld\n", LOC_PRT(&l), l.token.intlit);
       break;
-    case CLEX_floatlit:
-      printf(loc " floatlit: %f\n", loc_ptr(&l), l.token.floatlit);
+    case SPX_floatlit:
+      printf(LOC " floatlit: %f\n", LOC_PRT(&l), l.token.floatlit);
       break;
-    case CLEX_punct:
+    case SPX_punct:
       check_puncts_n_skip(&l, 2, '+', '+') {
-        printf(loc " spec punct: ++\n", loc_ptr(&l));
+        printf(LOC " spec punct: ++\n", LOC_PRT(&l));
       }
       else {
-        printf(loc " punct: '%c'\n", loc_ptr(&l), l.token.charlit);
+        printf(LOC " punct: '%c'\n", LOC_PRT(&l), l.token.charlit);
       }
       break;
 
-    case CLEX_eq:
-    case CLEX_noteq:
-    case CLEX_lesseq:
-    case CLEX_greatereq:
-    case CLEX_andand:
-    case CLEX_oror:
-    case CLEX_shl:
-    case CLEX_shr:
-    case CLEX_plusplus:
-    case CLEX_minusminus:
-    case CLEX_pluseq:
-    case CLEX_minuseq:
-    case CLEX_muleq:
-    case CLEX_diveq:
-    case CLEX_modeq:
-    case CLEX_andeq:
-    case CLEX_oreq:
-    case CLEX_xoreq:
-    case CLEX_arrow:
-    case CLEX_eqarrow:
-    case CLEX_shleq:
-    case CLEX_shreq:
-
-    case oof:
-    case CLEX_eof:
-    case CLEX_unknown:
-    case CLEX_parse_error:
+    case SPX_eof:
+    // case SPX_parse_error:
     default:
       break;
     }
