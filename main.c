@@ -52,9 +52,10 @@ bool check_puncts(lexer_t *l, int count, ...);
 void l_reset(lexer_t *l);
 void l_free(lexer_t *l);
 
-#define is_alphanumerical(c)                                                   \
-  ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_')
+#define is_letter(c)                                                           \
+  (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'
 #define is_numerical(c) (c >= '0' && c <= '9')
+#define is_alphanumerical(c) (is_letter(c) || is_numerical(c))
 
 #define _CC(l) (l)->content.items[(l)->cursor]
 
@@ -135,7 +136,7 @@ bool get_token(lexer_t *l) {
     return false;
   }
 
-  if (is_alphanumerical(_CC(l))) {
+  if (is_letter(_CC(l))) {
     l->token.col = l->_col + 1;
     l->token.row = l->_row + 1;
 
@@ -145,7 +146,6 @@ bool get_token(lexer_t *l) {
     }
 
     da_append(&l->token.str, '\0');
-    _INC_CURSOR(l, true);
     l->token.type = SPX_id;
   } else if (_CC(l) == '"') {
     l->token.col = l->_col + 1;
@@ -155,7 +155,6 @@ bool get_token(lexer_t *l) {
 
     while (_CC(l) != '"') {
       if (_CC(l) == '\\') {
-        // TODO: do things here
         uint16_t row = l->_row + 1;
         uint16_t col = l->_col + 1;
         _INC_CURSOR(l, false);
@@ -204,7 +203,6 @@ bool get_token(lexer_t *l) {
     _INC_CURSOR(l, true);
 
   } else if (is_numerical(_CC(l))) {
-    // TODO: support 0x 0b 0o notation
     l->token.col = l->_col + 1;
     l->token.row = l->_row + 1;
 
@@ -214,6 +212,25 @@ bool get_token(lexer_t *l) {
       l->token.intlit += _char_to_nm(_CC(l));
       _INC_CURSOR(l, false);
     }
+
+    if (l->token.intlit != 0 && _CC(l) == '#') {
+      int base = l->token.intlit;
+      l->token.intlit = 0;
+      _INC_CURSOR(l, false);
+      const char *current = l->content.items + l->cursor;
+
+      while (is_alphanumerical(_CC(l))) {
+        l->token.intlit *= 10;
+        l->token.intlit += _char_to_nm(_CC(l));
+        _INC_CURSOR(l, false);
+      }
+
+      char tmp = _CC(l);
+      _CC(l) = '\0';
+      l->token.intlit = strtoull(current, NULL, base);
+      _CC(l) = tmp;
+    }
+
     if (_CC(l) == '.') {
       // TODO: optimize it maybe
       l->token.type = SPX_floatlit;
@@ -251,11 +268,34 @@ bool get_token(lexer_t *l) {
                 LOC_PRT(l));
     _INC_CURSOR(l, true);
   } else {
-    l->token.col = l->_col + 1;
-    l->token.row = l->_row + 1;
-    l->token.charlit = _CC(l);
-    l->token.type = SPX_punct;
-    _INC_CURSOR(l, true);
+    if (_CC(l) == 0)
+      return false;
+    bool yes = false;
+
+    if (_CC(l) == '-') {
+      uint16_t t = l->cursor;
+      _INC_CURSOR(l, false);
+      if (get_token(l) &&
+          (l->token.type == SPX_floatlit || l->token.type == SPX_intlit)) {
+        yes = true;
+        if (l->token.type == SPX_intlit) {
+          l->token.intlit = -l->token.intlit;
+        } else if (l->token.type == SPX_floatlit) {
+          l->token.floatlit = -l->token.floatlit;
+        }
+        l->token.col -= 1;
+      } else {
+        l->cursor = t;
+      }
+    }
+
+    if (!yes) {
+      l->token.col = l->_col + 1;
+      l->token.row = l->_row + 1;
+      l->token.charlit = _CC(l);
+      l->token.type = SPX_punct;
+      _INC_CURSOR(l, true);
+    }
   }
 
   return true;
@@ -272,7 +312,7 @@ bool check_puncts(lexer_t *l, int count, ...) {
   va_list args;
   va_start(args, count);
 
-  for (int i = 0; i < count - 1; i++) {
+  for (int i = 0; i < count; i++) {
     if (l->token.charlit == va_arg(args, int)) {
       get_token(l);
       continue;
@@ -363,8 +403,6 @@ int main() {
       break;
 
     case SPX_eof:
-    // case SPX_parse_error:
-    default:
       break;
     }
   }
