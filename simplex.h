@@ -1,5 +1,5 @@
 
-// exmaple on how to use simplex
+// example on how to use simplex
 /*
   #define SIMPLEX_IMPLEMENTATION
   #include "simplex.h"
