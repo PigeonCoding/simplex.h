@@ -1,1 +1,3 @@
-main
+example_clang
+example_gcc
+example_mingw.exe
