@@ -1,7 +1,6 @@
 #define SIMPLEX_IMPLEMENTATION
 #include "simplex.h"
 
-
 int main() {
 
   lexer_t l = {0};
