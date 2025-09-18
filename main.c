@@ -7,7 +7,7 @@
 #define NOB_STRIP_PREFIX
 #include "nob.h"
 
-#define STR_BUFF_SZ 1024
+#define MINUS_ATTACHED
 
 static bool tmp_bool = false;
 
@@ -229,6 +229,54 @@ bool get_token(lexer_t *l) {
       _CC(l) = '\0';
       l->token.intlit = strtoull(current, NULL, base);
       _CC(l) = tmp;
+    } else if (l->token.intlit == 0 && _CC(l) == 'x') {
+      int base = 16;
+      // l->token.intlit = 0;
+      _INC_CURSOR(l, false);
+      const char *current = l->content.items + l->cursor;
+
+      while (is_alphanumerical(_CC(l))) {
+        l->token.intlit *= 10;
+        l->token.intlit += _char_to_nm(_CC(l));
+        _INC_CURSOR(l, false);
+      }
+
+      char tmp = _CC(l);
+      _CC(l) = '\0';
+      l->token.intlit = strtoull(current, NULL, base);
+      _CC(l) = tmp;
+    } else if (l->token.intlit == 0 && _CC(l) == 'o') {
+      int base = 8;
+      // l->token.intlit = 0;
+      _INC_CURSOR(l, false);
+      const char *current = l->content.items + l->cursor;
+
+      while (is_alphanumerical(_CC(l))) {
+        l->token.intlit *= 10;
+        l->token.intlit += _char_to_nm(_CC(l));
+        _INC_CURSOR(l, false);
+      }
+
+      char tmp = _CC(l);
+      _CC(l) = '\0';
+      l->token.intlit = strtoull(current, NULL, base);
+      _CC(l) = tmp;
+    } else if (l->token.intlit == 0 && _CC(l) == 'b') {
+      int base = 2;
+      // l->token.intlit = 0;
+      _INC_CURSOR(l, false);
+      const char *current = l->content.items + l->cursor;
+
+      while (is_alphanumerical(_CC(l))) {
+        l->token.intlit *= 10;
+        l->token.intlit += _char_to_nm(_CC(l));
+        _INC_CURSOR(l, false);
+      }
+
+      char tmp = _CC(l);
+      _CC(l) = '\0';
+      l->token.intlit = strtoull(current, NULL, base);
+      _CC(l) = tmp;
     }
 
     if (_CC(l) == '.') {
@@ -275,7 +323,12 @@ bool get_token(lexer_t *l) {
     if (_CC(l) == '-') {
       uint16_t t = l->cursor;
       _INC_CURSOR(l, false);
-      if (get_token(l) &&
+
+      if (
+#ifdef MINUS_ATTACHED
+          is_numerical(_CC(l)) &&
+#endif
+          get_token(l) &&
           (l->token.type == SPX_floatlit || l->token.type == SPX_intlit)) {
         yes = true;
         if (l->token.type == SPX_intlit) {
@@ -372,7 +425,7 @@ void l_free(lexer_t *l) {
 int main() {
 
   lexer_t l = {0};
-  l_init("./test.te", &l);
+  l_init("./test.txt", &l);
 
   printf("%s\n", l.content.items);
 
