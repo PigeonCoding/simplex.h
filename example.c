@@ -38,6 +38,8 @@ int main() {
       break;
     }
   }
+  
+  l_free(&l);
 
   return 0;
 }
