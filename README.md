@@ -16,7 +16,9 @@ int main() {
     }
   }
 
-  // l_reset(&l); // if you need to reset the lexer and parse another file instead of creating a new one
+  // if you need to reset the lexer and parse another file
+  // instead of creating a new one
+  // l_reset(&l); 
 
   l_free(&l);
 }
