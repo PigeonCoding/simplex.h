@@ -6,7 +6,12 @@
 
   int main() {
     lexer_t l = {0};
-    l_init("./file.txt", &l);
+    // depending on what style you prefer
+    l.slash_comments = true;
+    l.pound_comments = true;
+
+    if (!l_init("./test.txt", &l))
+      return 1;
 
     while (get_token(&l)) {
       switch (l.token.type) {
@@ -14,7 +19,8 @@
       }
     }
 
-    l_reset(&l); // if you need to reset the lexer and parse another file instead of creating a new one
+    l_reset(&l); // if you need to reset the lexer and parse another file
+  instead of creating a new one
 
     l_free(&l);
 
@@ -136,6 +142,11 @@ typedef struct {
   uint16_t _col;
   uint16_t _row;
 
+  // basically the // and /**/ comments
+  bool slash_comments;
+  // the # comment like in python
+  bool pound_comments;
+
   token_t token;
 
 } lexer_t;
@@ -203,21 +214,21 @@ void l_free(lexer_t *l);
 #ifdef SIMPLEX_IMPLEMENTATION
 
 int l_init(const char *file, lexer_t *l) {
-  l->content = (SPX_String_Builder){.capacity = 0, .count = 0, .items = NULL};
+  l->content = (SPX_String_Builder){.count = 0};
   if (!spx_read_entire_file(file, &l->content)) {
     fprintf(stderr, "could not read file %s\n", file);
-    return 1;
+    return 0;
   }
   l->file = file;
 
   spx_da_append(&l->content, '\0');
-  return 0;
+  return 1;
 }
 
 // returns true if a token is found
 bool get_token(lexer_t *l) {
 
-  l->token.type = 0;
+  l->token.type = SPX_eof;
   l->token.str.count = 0;
   l->token.charlit = 0;
   l->token.floatlit = 0;
@@ -232,6 +243,35 @@ bool get_token(lexer_t *l) {
   if (l->cursor >= l->content.count) {
     l->token.type = SPX_eof;
     return false;
+  }
+
+  if (l->slash_comments && l->cursor <= l->content.count - 2 && _CC(l) == '/' &&
+      l->content.items[l->cursor + 1] == '/') {
+    uint16_t row = l->_row;
+    while (l->cursor < l->content.count && l->_row == row) {
+      _INC_CURSOR(l, true);
+    }
+  }
+
+  if (l->slash_comments && l->cursor <= l->content.count - 2 && _CC(l) == '/' &&
+      l->content.items[l->cursor + 1] == '*') {
+    // l->cursor++;
+    while (l->cursor <= l->content.count - 2 &&
+           !(_CC(l) == '*' && l->content.items[l->cursor + 1] == '/')) {
+
+      _INC_CURSOR(l, true);
+    }
+    _INC_CURSOR(l, true);
+    _INC_CURSOR(l, true);
+    if (_CC(l) == '\n')
+      _INC_CURSOR(l, true);
+  }
+
+  if (l->pound_comments && _CC(l) == '#') {
+    uint16_t row = l->_row;
+    while (l->cursor < l->content.count && l->_row == row) {
+      _INC_CURSOR(l, true);
+    }
   }
 
   if (is_letter(_CC(l))) {
@@ -491,13 +531,13 @@ bool check_puncts(lexer_t *l, int count, ...) {
 void l_reset(lexer_t *l) {
   l->content.count = 0;
   l->cursor = 0;
-  if (l->file)
-    free((void *)l->file);
+
+  // leak???
   l->file = NULL;
   l->_col = 0;
   l->_row = 0;
 
-  l->token.type = 0;
+  l->token.type = SPX_eof;
   l->token.str.count = 0;
   l->token.charlit = 0;
   l->token.floatlit = 0;

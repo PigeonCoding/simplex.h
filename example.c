@@ -4,7 +4,11 @@
 int main() {
 
   lexer_t l = {0};
-  l_init("./test.txt", &l);
+  if (!l_init("./test.txt", &l))
+    return 1;
+  
+  l.slash_comments = true;
+  l.pound_comments = true;
 
   printf("%s\n", l.content.items);
 
@@ -38,7 +42,7 @@ int main() {
       break;
     }
   }
-  
+
   l_free(&l);
 
   return 0;
