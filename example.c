@@ -4,15 +4,15 @@
 int main() {
 
   lexer_t l = {0};
-  if (!l_init("./test.txt", &l))
+  if (!spx_init("./test.txt", &l))
     return 1;
-  
+
   l.slash_comments = true;
   l.pound_comments = true;
 
   printf("%s\n", l.content.items);
 
-  while (get_token(&l)) {
+  while (spx_get_token(&l)) {
     switch (l.token.type) {
     case SPX_id:
       printf(LOC " id: '%s'\n", LOC_PRT(&l), l.token.str.items);
@@ -30,7 +30,7 @@ int main() {
       printf(LOC " floatlit: %f\n", LOC_PRT(&l), l.token.floatlit);
       break;
     case SPX_punct:
-      check_puncts_n_skip(&l, 2, '+', '+') {
+      spx_check_puncts_n_skip(&l, 2, '+', '+') {
         printf(LOC " spec punct: ++\n", LOC_PRT(&l));
       }
       else {
@@ -43,7 +43,7 @@ int main() {
     }
   }
 
-  l_free(&l);
+  spx_free(&l);
 
   return 0;
 }

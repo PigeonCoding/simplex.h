@@ -10,19 +10,19 @@
     l.slash_comments = true;
     l.pound_comments = true;
 
-    if (!l_init("./test.txt", &l))
+    if (!spx_init("./test.txt", &l))
       return 1;
 
-    while (get_token(&l)) {
+    while (spx_get_token(&l)) {
       switch (l.token.type) {
       // do your stuff here
       }
     }
 
-    l_reset(&l); // if you need to reset the lexer and parse another file
+    spx_reset(&l); // if you need to reset the lexer and parse another file
   instead of creating a new one
 
-    l_free(&l);
+    spx_free(&l);
 
   }
 
@@ -104,6 +104,7 @@ typedef struct {
     goto defer;                                                                \
   } while (0)
 
+// taken from nob,h 'nob_read_entire_file'
 bool spx_read_entire_file(const char *path, SPX_String_Builder *sb);
 
 // -----------------------------------------------
@@ -144,23 +145,25 @@ typedef struct {
 
   // basically the // and /**/ comments
   bool slash_comments;
-  // the # comment like in python
+  // the # comments like in python
   bool pound_comments;
 
   token_t token;
 
 } lexer_t;
 
-int l_init(const char *file, lexer_t *l);
-bool get_token(lexer_t *l);
-bool check_puncts(lexer_t *l, int count, ...);
-void l_reset(lexer_t *l);
-void l_free(lexer_t *l);
+int spx_init(const char *file, lexer_t *l);
+// returns true if a token is found
+bool spx_get_token(lexer_t *l);
+// this function does not modify the lexer
+bool spx_check_puncts(lexer_t *l, int count, ...);
+void spx_reset(lexer_t *l);
+void spx_free(lexer_t *l);
 
-#define is_letter(c)                                                           \
+#define _IS_LETTER(c)                                                           \
   (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'
-#define is_numerical(c) (c >= '0' && c <= '9')
-#define is_alphanumerical(c) (is_letter(c) || is_numerical(c))
+#define _IS_NUMERICAL(c) (c >= '0' && c <= '9')
+#define _IS_ALPHANUMERICAL(c) (_IS_LETTER(c) || _IS_NUMERICAL(c))
 
 #define _CC(l) (l)->content.items[(l)->cursor]
 
@@ -187,19 +190,19 @@ void l_free(lexer_t *l);
   } while (0)
 
 // TODO: find a way to do it without tmp_bool
-#define check_puncts_n_skip(l, count, ...)                                     \
+#define spx_check_puncts_n_skip(l, count, ...)                                     \
   do {                                                                         \
-    tmp_bool = check_puncts(l, count, __VA_ARGS__);                            \
+    tmp_bool = spx_check_puncts(l, count, __VA_ARGS__);                            \
     if (tmp_bool) {                                                            \
       for (int i = 1; i < count; i++) {                                        \
-        get_token(l);                                                          \
+        spx_get_token(l);                                                          \
       }                                                                        \
     }                                                                          \
   } while (0);                                                                 \
   if (tmp_bool)
 
 #define get_token_and_expect(l, type)                                          \
-  get_token((l)) && (l)->token.type == (type)
+  spx_get_token((l)) && (l)->token.type == (type)
 #define get_token_and_expect_punct(l, punct)                                   \
   get_token_and_expect(l, SPX_punct) && (l)->token.charlit == (punct)
 
@@ -213,7 +216,7 @@ void l_free(lexer_t *l);
 
 #ifdef SIMPLEX_IMPLEMENTATION
 
-int l_init(const char *file, lexer_t *l) {
+int spx_init(const char *file, lexer_t *l) {
   l->content = (SPX_String_Builder){.count = 0};
   if (!spx_read_entire_file(file, &l->content)) {
     fprintf(stderr, "could not read file %s\n", file);
@@ -225,8 +228,7 @@ int l_init(const char *file, lexer_t *l) {
   return 1;
 }
 
-// returns true if a token is found
-bool get_token(lexer_t *l) {
+bool spx_get_token(lexer_t *l) {
 
   l->token.type = SPX_eof;
   l->token.str.count = 0;
@@ -274,11 +276,11 @@ bool get_token(lexer_t *l) {
     }
   }
 
-  if (is_letter(_CC(l))) {
+  if (_IS_LETTER(_CC(l))) {
     l->token.col = l->_col + 1;
     l->token.row = l->_row + 1;
 
-    while (is_alphanumerical(_CC(l))) {
+    while (_IS_ALPHANUMERICAL(_CC(l))) {
       spx_da_append(&l->token.str, _CC(l));
       _INC_CURSOR(l, false);
     }
@@ -340,12 +342,12 @@ bool get_token(lexer_t *l) {
     l->token.type = SPX_dqstring;
     _INC_CURSOR(l, true);
 
-  } else if (is_numerical(_CC(l))) {
+  } else if (_IS_NUMERICAL(_CC(l))) {
     l->token.col = l->_col + 1;
     l->token.row = l->_row + 1;
 
     l->token.type = SPX_intlit;
-    while (is_numerical(_CC(l))) {
+    while (_IS_NUMERICAL(_CC(l))) {
       l->token.intlit *= 10;
       l->token.intlit += _char_to_nm(_CC(l));
       _INC_CURSOR(l, false);
@@ -357,7 +359,7 @@ bool get_token(lexer_t *l) {
       _INC_CURSOR(l, false);
       const char *current = l->content.items + l->cursor;
 
-      while (is_alphanumerical(_CC(l))) {
+      while (_IS_ALPHANUMERICAL(_CC(l))) {
         l->token.intlit *= 10;
         l->token.intlit += _char_to_nm(_CC(l));
         _INC_CURSOR(l, false);
@@ -373,7 +375,7 @@ bool get_token(lexer_t *l) {
       _INC_CURSOR(l, false);
       const char *current = l->content.items + l->cursor;
 
-      while (is_alphanumerical(_CC(l))) {
+      while (_IS_ALPHANUMERICAL(_CC(l))) {
         l->token.intlit *= 10;
         l->token.intlit += _char_to_nm(_CC(l));
         _INC_CURSOR(l, false);
@@ -389,7 +391,7 @@ bool get_token(lexer_t *l) {
       _INC_CURSOR(l, false);
       const char *current = l->content.items + l->cursor;
 
-      while (is_alphanumerical(_CC(l))) {
+      while (_IS_ALPHANUMERICAL(_CC(l))) {
         l->token.intlit *= 10;
         l->token.intlit += _char_to_nm(_CC(l));
         _INC_CURSOR(l, false);
@@ -405,7 +407,7 @@ bool get_token(lexer_t *l) {
       _INC_CURSOR(l, false);
       const char *current = l->content.items + l->cursor;
 
-      while (is_alphanumerical(_CC(l))) {
+      while (_IS_ALPHANUMERICAL(_CC(l))) {
         l->token.intlit *= 10;
         l->token.intlit += _char_to_nm(_CC(l));
         _INC_CURSOR(l, false);
@@ -425,7 +427,7 @@ bool get_token(lexer_t *l) {
 
       _INC_CURSOR(l, false);
 
-      while (is_numerical(_CC(l))) {
+      while (_IS_NUMERICAL(_CC(l))) {
         l->token.intlit *= 10;
         l->token.intlit += _char_to_nm(_CC(l));
         _INC_CURSOR(l, false);
@@ -464,9 +466,9 @@ bool get_token(lexer_t *l) {
 
       if (
 #ifdef MINUS_ATTACHED
-          is_numerical(_CC(l)) &&
+          _IS_NUMERICAL(_CC(l)) &&
 #endif
-          get_token(l) &&
+          spx_get_token(l) &&
           (l->token.type == SPX_floatlit || l->token.type == SPX_intlit)) {
         yes = true;
         if (l->token.type == SPX_intlit) {
@@ -492,8 +494,7 @@ bool get_token(lexer_t *l) {
   return true;
 }
 
-// this function does not modify the lexer
-bool check_puncts(lexer_t *l, int count, ...) {
+bool spx_check_puncts(lexer_t *l, int count, ...) {
 
   token_t token = l->token;
   size_t _row = l->_row;
@@ -505,7 +506,7 @@ bool check_puncts(lexer_t *l, int count, ...) {
 
   for (int i = 0; i < count; i++) {
     if (l->token.charlit == va_arg(args, int)) {
-      get_token(l);
+      spx_get_token(l);
       continue;
     } else {
 
@@ -528,7 +529,7 @@ bool check_puncts(lexer_t *l, int count, ...) {
   return true;
 }
 
-void l_reset(lexer_t *l) {
+void spx_reset(lexer_t *l) {
   l->content.count = 0;
   l->cursor = 0;
 
@@ -546,8 +547,8 @@ void l_reset(lexer_t *l) {
   l->token.row = 0;
 }
 
-void l_free(lexer_t *l) {
-  l_reset(l);
+void spx_free(lexer_t *l) {
+  spx_reset(l);
 
   spx_da_free(l->content);
   l->content.items = NULL;
@@ -560,7 +561,6 @@ void l_free(lexer_t *l) {
   l->token.str.count = 0;
 }
 
-// taken from nob,h
 bool spx_read_entire_file(const char *path, SPX_String_Builder *sb) {
   bool result = true;
 
