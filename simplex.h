@@ -160,7 +160,7 @@ bool spx_check_puncts(lexer_t *l, int count, ...);
 void spx_reset(lexer_t *l);
 void spx_free(lexer_t *l);
 
-#define _IS_LETTER(c)                                                           \
+#define _IS_LETTER(c)                                                          \
   (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'
 #define _IS_NUMERICAL(c) (c >= '0' && c <= '9')
 #define _IS_ALPHANUMERICAL(c) (_IS_LETTER(c) || _IS_NUMERICAL(c))
@@ -190,12 +190,12 @@ void spx_free(lexer_t *l);
   } while (0)
 
 // TODO: find a way to do it without tmp_bool
-#define spx_check_puncts_n_skip(l, count, ...)                                     \
+#define spx_check_puncts_n_skip(l, count, ...)                                 \
   do {                                                                         \
-    tmp_bool = spx_check_puncts(l, count, __VA_ARGS__);                            \
+    tmp_bool = spx_check_puncts(l, count, __VA_ARGS__);                        \
     if (tmp_bool) {                                                            \
       for (int i = 1; i < count; i++) {                                        \
-        spx_get_token(l);                                                          \
+        spx_get_token(l);                                                      \
       }                                                                        \
     }                                                                          \
   } while (0);                                                                 \
@@ -253,6 +253,7 @@ bool spx_get_token(lexer_t *l) {
     while (l->cursor < l->content.count && l->_row == row) {
       _INC_CURSOR(l, true);
     }
+    return spx_get_token(l);
   }
 
   if (l->slash_comments && l->cursor <= l->content.count - 2 && _CC(l) == '/' &&
@@ -265,8 +266,7 @@ bool spx_get_token(lexer_t *l) {
     }
     _INC_CURSOR(l, true);
     _INC_CURSOR(l, true);
-    if (_CC(l) == '\n')
-      _INC_CURSOR(l, true);
+    return spx_get_token(l);
   }
 
   if (l->pound_comments && _CC(l) == '#') {
@@ -274,6 +274,7 @@ bool spx_get_token(lexer_t *l) {
     while (l->cursor < l->content.count && l->_row == row) {
       _INC_CURSOR(l, true);
     }
+    return spx_get_token(l);
   }
 
   if (_IS_LETTER(_CC(l))) {
