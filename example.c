@@ -11,6 +11,7 @@ int main() {
   l.pound_comments = true;
 
   printf("%s\n", l.content.items);
+  printf("----------------------------\n");
 
   while (spx_get_token(&l)) {
     switch (l.token.type) {

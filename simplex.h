@@ -1,3 +1,4 @@
+// Simplex v1 https://github.com/PigeonCoding/simplex.h
 
 // example on how to use simplex
 /*
@@ -111,7 +112,7 @@ bool spx_read_entire_file(const char *path, SPX_String_Builder *sb);
 
 #define MINUS_ATTACHED
 
-static bool tmp_bool = false;
+extern bool tmp_bool;
 
 enum SPX {
   SPX_eof,
@@ -121,6 +122,11 @@ enum SPX {
   SPX_dqstring,
   SPX_punct,
   SPX_charlit,
+};
+
+static const char *type_to_str[] = {
+    "SPX_eof",      "SPX_intlit", "SPX_floatlit", "SPX_id",
+    "SPX_dqstring", "SPX_punct",  "SPX_charlit",
 };
 
 typedef struct {
@@ -147,6 +153,7 @@ typedef struct {
   bool slash_comments;
   // the # comments like in python
   bool pound_comments;
+  bool raw_str;
 
   token_t token;
 
@@ -159,6 +166,8 @@ bool spx_get_token(lexer_t *l);
 bool spx_check_puncts(lexer_t *l, int count, ...);
 void spx_reset(lexer_t *l);
 void spx_free(lexer_t *l);
+lexer_t peak(lexer_t l);
+bool spx_get_and_expect(lexer_t *l, enum SPX t);
 
 #define _IS_LETTER(c)                                                          \
   (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'
@@ -214,7 +223,12 @@ void spx_free(lexer_t *l);
 
 #endif // SIMPLEX_H_
 
+
+// #define SIMPLEX_IMPLEMENTATION
+
 #ifdef SIMPLEX_IMPLEMENTATION
+
+bool tmp_bool = false;
 
 int spx_init(const char *file, lexer_t *l) {
   l->content = (SPX_String_Builder){.count = 0};
@@ -223,7 +237,6 @@ int spx_init(const char *file, lexer_t *l) {
     return 0;
   }
   l->file = file;
-
   spx_da_append(&l->content, '\0');
   return 1;
 }
@@ -295,7 +308,7 @@ bool spx_get_token(lexer_t *l) {
     _INC_CURSOR(l, false);
 
     while (_CC(l) != '"') {
-      if (_CC(l) == '\\') {
+      if (_CC(l) == '\\' && !l->raw_str) {
         uint16_t row = l->_row + 1;
         uint16_t col = l->_col + 1;
         _INC_CURSOR(l, false);
@@ -534,10 +547,6 @@ void spx_reset(lexer_t *l) {
   l->content.count = 0;
   l->cursor = 0;
 
-  // leak???
-  l->file = NULL;
-  l->_col = 0;
-  l->_row = 0;
 
   l->token.type = SPX_eof;
   l->token.str.count = 0;
@@ -551,6 +560,10 @@ void spx_reset(lexer_t *l) {
 void spx_free(lexer_t *l) {
   spx_reset(l);
 
+  l->file = NULL;
+  l->_col = 0;
+  l->_row = 0;
+
   spx_da_free(l->content);
   l->content.items = NULL;
   l->content.capacity = 0;
@@ -561,6 +574,38 @@ void spx_free(lexer_t *l) {
   l->token.str.capacity = 0;
   l->token.str.count = 0;
 }
+
+// -------------------------------
+// TODO: points to the same str
+// as the base lexer so no memory leak
+// but it overwrites the old str
+lexer_t peak(lexer_t l) {
+  if (!spx_get_token(&l))
+    l.token.type = SPX_eof;
+  return l;
+}
+
+bool spx_get_and_expect(lexer_t *l, enum SPX t) {
+
+  if (!spx_get_token(l)) {
+    if ((int)t == -1)
+      fprintf(stderr, "[ERROR]: " LOC " got eof", LOC_PRT(l));
+    else
+      fprintf(stderr, "[ERROR]: " LOC " expected (%s) but got eof", LOC_PRT(l),
+              type_to_str[t]);
+    return false;
+  }
+
+  if ((int)t != -1 && l->token.type != t) {
+    fprintf(stderr, "[ERROR]: " LOC " expected (%s) but got (%s)", LOC_PRT(l),
+            type_to_str[t], type_to_str[l->token.type]);
+    return false;
+  }
+
+  return true;
+}
+
+//---------------------------------
 
 bool spx_read_entire_file(const char *path, SPX_String_Builder *sb) {
   bool result = true;
@@ -604,5 +649,5 @@ defer:
     fclose(f);
   return result;
 }
-
-#endif // SIMPLEX_IMPLEMENTATION
+// ------------------------------
+#endif
