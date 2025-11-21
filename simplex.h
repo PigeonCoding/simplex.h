@@ -1,4 +1,4 @@
-// Simplex v1 https://github.com/PigeonCoding/simplex.h
+// Simplex v1.1 https://github.com/PigeonCoding/simplex.h
 
 // example on how to use simplex
 /*
@@ -124,7 +124,7 @@ enum SPX {
   SPX_charlit,
 };
 
-static const char *type_to_str[] = {
+static const char *spx_type_to_str[] = {
     "SPX_eof",      "SPX_intlit", "SPX_floatlit", "SPX_id",
     "SPX_dqstring", "SPX_punct",  "SPX_charlit",
 };
@@ -210,8 +210,8 @@ bool spx_get_and_expect(lexer_t *l, enum SPX t);
   } while (0);                                                                 \
   if (tmp_bool)
 
-#define get_token_and_expect(l, type)                                          \
-  spx_get_token((l)) && (l)->token.type == (type)
+#define get_token_and_expect(l, typee)                                          \
+  spx_get_token((l)) && (l)->token.type == (typee)
 #define get_token_and_expect_punct(l, punct)                                   \
   get_token_and_expect(l, SPX_punct) && (l)->token.charlit == (punct)
 
@@ -233,7 +233,6 @@ bool tmp_bool = false;
 int spx_init(const char *file, lexer_t *l) {
   l->content = (SPX_String_Builder){.count = 0};
   if (!spx_read_entire_file(file, &l->content)) {
-    fprintf(stderr, "could not read file %s\n", file);
     return 0;
   }
   l->file = file;
@@ -256,6 +255,7 @@ bool spx_get_token(lexer_t *l) {
   }
 
   if (l->cursor >= l->content.count) {
+    // fprintf(stdout, "[INFO]: EOF found");
     l->token.type = SPX_eof;
     return false;
   }
@@ -544,9 +544,9 @@ bool spx_check_puncts(lexer_t *l, int count, ...) {
 }
 
 void spx_reset(lexer_t *l) {
-  l->content.count = 0;
   l->cursor = 0;
-
+  l->_col = 0;
+  l->_row = 0;
 
   l->token.type = SPX_eof;
   l->token.str.count = 0;
@@ -561,8 +561,6 @@ void spx_free(lexer_t *l) {
   spx_reset(l);
 
   l->file = NULL;
-  l->_col = 0;
-  l->_row = 0;
 
   spx_da_free(l->content);
   l->content.items = NULL;
@@ -589,16 +587,16 @@ bool spx_get_and_expect(lexer_t *l, enum SPX t) {
 
   if (!spx_get_token(l)) {
     if ((int)t == -1)
-      fprintf(stderr, "[ERROR]: " LOC " got eof", LOC_PRT(l));
+      fprintf(stderr, "[ERROR]: " LOC " got eof\n", LOC_PRT(l));
     else
-      fprintf(stderr, "[ERROR]: " LOC " expected (%s) but got eof", LOC_PRT(l),
-              type_to_str[t]);
+      fprintf(stderr, "[ERROR]: " LOC " expected (%s) but got eof\n", LOC_PRT(l),
+              spx_type_to_str[t]);
     return false;
   }
 
   if ((int)t != -1 && l->token.type != t) {
-    fprintf(stderr, "[ERROR]: " LOC " expected (%s) but got (%s)", LOC_PRT(l),
-            type_to_str[t], type_to_str[l->token.type]);
+    fprintf(stderr, "[ERROR]: " LOC " expected (%s) but got (%s)\n", LOC_PRT(l),
+            spx_type_to_str[t], spx_type_to_str[l->token.type]);
     return false;
   }
 
@@ -644,7 +642,7 @@ bool spx_read_entire_file(const char *path, SPX_String_Builder *sb) {
 
 defer:
   if (!result)
-    fprintf(stderr, "Could not read file %s: %s", path, strerror(errno));
+    fprintf(stderr, "Could not read file %s: %s\n", path, strerror(errno));
   if (f)
     fclose(f);
   return result;
